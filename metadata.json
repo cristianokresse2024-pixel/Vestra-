@@ -1,0 +1,6 @@
+{
+  "name": "Reino Gestão",
+  "description": "Sistema premium de gestão completo para lojas físicas de roupas, acessórios, perfumes e produtos diversos com controle de estoque, vendas, caixa, metas, parceiros e relatórios.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

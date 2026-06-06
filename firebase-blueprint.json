@@ -1,0 +1,204 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Information about secondary system users and roles",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["Administrador", "Vendedor", "Parceiro"] },
+        "linkedPartnerId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
+    },
+    "Store": {
+      "title": "Store",
+      "description": "Comercial branch within the empire",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory product registered at a branch",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" }
+      },
+      "required": ["id", "storeId", "code", "name", "category", "costPrice", "salePrice", "stock", "minStock"]
+    },
+    "SaleItem": {
+      "title": "SaleItem",
+      "description": "Item involved in a sale",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "name": { "type": "string" },
+        "quantity": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "salePrice": { "type": "number" }
+      },
+      "required": ["productId", "name", "quantity", "costPrice", "salePrice"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Sale registered in a branch",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "date": { "type": "string" },
+        "items": { "type": "array" },
+        "paymentMethod": { "type": "string" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "profit": { "type": "number" },
+        "partnerId": { "type": "string" },
+        "commissionPercent": { "type": "number" },
+        "commissionAmount": { "type": "number" }
+      },
+      "required": ["id", "storeId", "date", "items", "paymentMethod", "discount", "total", "profit"]
+    },
+    "Partner": {
+      "title": "Partner",
+      "description": "Business partner or external seller receiving commissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "commissionPercent": { "type": "number" }
+      },
+      "required": ["id", "storeId", "name", "commissionPercent"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational expense/passives of a branch",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pago", "Pendente"] }
+      },
+      "required": ["id", "storeId", "description", "category", "amount", "date", "status"]
+    },
+    "CashEntry": {
+      "title": "CashEntry",
+      "description": "Cash ledger entry record (inflows/outflows)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "type": { "type": "string", "enum": ["entrada", "saída"] },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "storeId", "type", "description", "amount", "date", "category"]
+    },
+    "MonthlyGoal": {
+      "title": "MonthlyGoal",
+      "description": "Sales target goals for a branch",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "targetValue": { "type": "number" },
+        "yearMonth": { "type": "string" }
+      },
+      "required": ["id", "storeId", "targetValue", "yearMonth"]
+    },
+    "MonthlyDesiredSalary": {
+      "title": "MonthlyDesiredSalary",
+      "description": "Desired salary projection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "amount": { "type": "number" },
+        "yearMonth": { "type": "string" }
+      },
+      "required": ["id", "storeId", "amount", "yearMonth"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System alerting and business event notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "success"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "date": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "storeId", "type", "title", "message", "date", "read"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and credentials mappings"
+    },
+    "/stores/{storeId}": {
+      "schema": "Store",
+      "description": "Empire branches details"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Inventory units list"
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Recent sales and transactions list"
+    },
+    "/partners/{partnerId}": {
+      "schema": "Partner",
+      "description": "External sellers or partners listing"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Outflows and recurring payments tracker"
+    },
+    "/cash_entries/{entryId}": {
+      "schema": "CashEntry",
+      "description": "Cash ledger of financial records"
+    },
+    "/goals/{goalId}": {
+      "schema": "MonthlyGoal",
+      "description": "Periodic sales expectations"
+    },
+    "/desired_salaries/{salaryId}": {
+      "schema": "MonthlyDesiredSalary",
+      "description": "Desired monthly salaries projection"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "System alerts history"
+    }
+  }
+}

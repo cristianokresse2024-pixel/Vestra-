@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety catch-all: reject everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Is the user logged in at all?
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Role-checking helper that securely reads user record from database
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isRole(roleName) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == roleName;
+    }
+
+    function isAdmin() {
+      return isRole('Administrador');
+    }
+
+    function isVendedor() {
+      return isRole('Vendedor');
+    }
+
+    function isParceiro() {
+      return isRole('Parceiro');
+    }
+
+    // --- Users Profiles rules ---
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Stores rules ---
+    match /stores/{storeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Products rules ---
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Sales Rules (Vendedor can write, Partner can only see their commissions) ---
+    match /sales/{saleId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || 
+        isVendedor() || 
+        (isParceiro() && resource.data.partnerId == getUserData().linkedPartnerId)
+      );
+      allow create: if isSignedIn() && (isAdmin() || isVendedor());
+      allow update: if isSignedIn() && (isAdmin() || isVendedor());
+      allow delete: if isAdmin();
+    }
+
+    // --- Partners rules ---
+    match /partners/{partnerId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Expenses rules (Admin Only) ---
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- Cash flow ledger rules (Admin Only) ---
+    match /cash_entries/{entryId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- Goals rules (Admin Only to write) ---
+    match /goals/{goalId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Desired Salaries rules (Admin Only) ---
+    match /desired_salaries/{salaryId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- Notifications rules ---
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || isVendedor());
+      allow update, delete: if isSignedIn() && (isAdmin() || request.resource.data.read == true);
+    }
+  }
+}
