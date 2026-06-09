@@ -18,6 +18,9 @@ export interface Product {
   partnerId?: string; // Optional linked partner
   brand?: string; // Optional brand / marca
   image?: string; // Optional product image URL or Base64 string
+  hasPartner?: boolean; // If this product has active partner arrangement
+  partnerType?: 'lucro' | 'venda' | 'fixo' | 'consignado'; // Type of partnership
+  partnerValue?: number; // Corresponding rate or price parameters
 }
 
 export interface SaleItem {

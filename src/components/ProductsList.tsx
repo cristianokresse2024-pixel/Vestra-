@@ -34,6 +34,9 @@ export const ProductsList: React.FC = () => {
   const [stock, setStock] = useState('0');
   const [minStock, setMinStock] = useState('5');
   const [partnerId, setPartnerId] = useState('');
+  const [hasPartner, setHasPartner] = useState(false);
+  const [partnerType, setPartnerType] = useState<'lucro' | 'venda' | 'fixo' | 'consignado'>('venda');
+  const [partnerValue, setPartnerValue] = useState('0');
   const [brand, setBrand] = useState('');
   const [image, setImage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -72,6 +75,7 @@ export const ProductsList: React.FC = () => {
     const numericSale = parseFloat(salePrice) || 0;
     const numericStock = parseInt(stock, 10) || 0;
     const numericMinStock = parseInt(minStock, 10) || 0;
+    const numericPartnerValue = parseFloat(partnerValue) || 0;
 
     if (numericSale < numericCost) {
       if (!confirm('Aviso: O preço de venda é inferior ao preço de custo. Deseja prosseguir mesmo assim?')) {
@@ -89,7 +93,10 @@ export const ProductsList: React.FC = () => {
       salePrice: numericSale,
       stock: numericStock,
       minStock: numericMinStock,
-      partnerId: partnerId || undefined
+      partnerId: hasPartner && partnerId ? partnerId : undefined,
+      hasPartner,
+      partnerType: hasPartner ? partnerType : undefined,
+      partnerValue: hasPartner ? numericPartnerValue : undefined
     };
 
     if (editingId) {
@@ -112,6 +119,9 @@ export const ProductsList: React.FC = () => {
     setStock(p.stock.toString());
     setMinStock(p.minStock.toString());
     setPartnerId(p.partnerId || '');
+    setHasPartner(!!p.hasPartner);
+    setPartnerType(p.partnerType || 'venda');
+    setPartnerValue((p.partnerValue ?? 0).toString());
     setBrand(p.brand || '');
     setImage(p.image || '');
     setShowAddModal(true);
@@ -126,6 +136,9 @@ export const ProductsList: React.FC = () => {
     setStock('0');
     setMinStock('5');
     setPartnerId('');
+    setHasPartner(false);
+    setPartnerType('venda');
+    setPartnerValue('0');
     setBrand('');
     setImage('');
     setEditingId(null);
@@ -226,9 +239,13 @@ export const ProductsList: React.FC = () => {
                                   Marca: <strong className="text-zinc-400 font-semibold font-sans">{p.brand}</strong>
                                 </span>
                               )}
-                              {p.partnerId && (
-                                <span className="text-[9px] text-purple-400 font-mono flex items-center gap-1 bg-purple-950/25 px-1 py-0.2 rounded border border-purple-500/10">
-                                  👤 {partners.find(part => part.id === p.partnerId)?.name || 'Parceiro'}
+                              {p.hasPartner && p.partnerId && (
+                                <span className="text-[9px] text-purple-400 font-mono flex items-center gap-1 bg-purple-950/25 px-1.5 py-0.5 rounded border border-purple-500/10">
+                                  👤 {partners.find(part => part.id === p.partnerId)?.name || 'Parceiro'} • {' '}
+                                  {p.partnerType === 'lucro' ? `${p.partnerValue}% Lucro` :
+                                   p.partnerType === 'venda' ? `${p.partnerValue}% Venda` :
+                                   p.partnerType === 'fixo' ? `R$ ${p.partnerValue} Fixo` :
+                                   `Consignado (Loja: R$ ${p.partnerValue})`}
                                 </span>
                               )}
                             </div>
@@ -311,207 +328,290 @@ export const ProductsList: React.FC = () => {
 
       {/* Modern Add / Edit Product Modal Overlay */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="glow-zinc-card w-full max-w-lg rounded-3xl p-6 relative overflow-hidden space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
+          <div className="glow-zinc-card w-full max-w-lg rounded-3xl p-5 relative space-y-4 my-auto max-h-[95vh] flex flex-col">
             {/* Header line gradient */}
             <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-purple-500 to-indigo-500" />
             
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
               <h3 className="text-sm font-semibold tracking-wider uppercase text-zinc-200 font-sans">
                 {editingId ? 'Editar Produto Imperial' : 'Registrar Novo Atributo/Produto'}
               </h3>
               <button
                 onClick={resetForm}
-                className="text-zinc-500 hover:text-zinc-100 text-xs font-mono"
+                className="text-zinc-500 hover:text-zinc-105 text-xs font-mono"
               >
                 [ FECHAR ]
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 font-sans text-xs text-zinc-300">
+            <form onSubmit={handleSubmit} className="space-y-4 font-sans text-xs text-zinc-300 flex flex-col max-h-[80vh]">
               {errorMsg && (
-                <div className="p-3 bg-red-950/20 border border-red-500/20 text-red-400 rounded-xl flex items-center gap-2">
+                <div className="p-3 bg-red-950/20 border border-red-500/20 text-red-400 rounded-xl flex items-center gap-2 shrink-0">
                   <Info className="w-4 h-4 shrink-0" />
                   <p>{errorMsg}</p>
                 </div>
               )}
 
-              {/* Product Media Snapshot Uploader */}
-              <ProductImageCapture 
-                currentValue={image}
-                onChange={(base64) => setImage(base64)}
-                onClear={() => setImage('')}
-              />
+              {/* Scrollable Container for inputs */}
+              <div className="space-y-4 overflow-y-auto pr-1 flex-1 max-h-[55vh] py-1">
+                {/* Product Media Snapshot Uploader */}
+                <ProductImageCapture 
+                  currentValue={image}
+                  onChange={(base64) => setImage(base64)}
+                  onClear={() => setImage('')}
+                />
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* 1. Barcode/Code */}
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                    Código de Barras / SKU *
-                  </label>
-                  <div className="flex gap-1.5">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 1. Barcode/Code */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
+                      Código de Barras / SKU *
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Ex: 789102392"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        required
+                        className="flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowScannerModal(true)}
+                        className="px-3 bg-zinc-900 border border-zinc-800 hover:border-purple-500 hover:text-purple-400 rounded-lg text-zinc-400 flex items-center justify-center transition-all cursor-pointer"
+                        title="Efetuar Leitura por Câmera"
+                      >
+                        <Scan className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. Brand / Marca */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
+                      Marca / Fabricante
+                    </label>
                     <input
                       type="text"
-                      placeholder="Ex: 789102392"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      required
-                      className="flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none font-mono"
+                      placeholder="Ex: Natura, Zara, Nike"
+                      value={brand}
+                      onChange={(e) => setBrand(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none text-xs"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowScannerModal(true)}
-                      className="px-3 bg-zinc-900 border border-zinc-800 hover:border-purple-500 hover:text-purple-400 rounded-lg text-zinc-400 flex items-center justify-center transition-all cursor-pointer"
-                      title="Efetuar Leitura por Câmera"
-                    >
-                      <Scan className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
 
-                {/* 2. Brand / Marca */}
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                    Marca / Fabricante
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Natura, Zara, Nike"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 3. Product Title */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
+                      Nome do Produto *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Perfume Malbec Premium"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none text-xs"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* 3. Product Title */}
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                    Nome do Produto *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Perfume Malbec Premium"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-
-                {/* 4. Category selection */}
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                    Categoria
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:border-purple-500 outline-none"
-                  >
-                    {categories.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* 4. Cost price */}
-                <div className="space-y-1.5">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1">
-                    <DollarSign className="w-3 h-3 text-purple-400" /> Preço de Custo (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={costPrice}
-                    onChange={(e) => setCostPrice(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono"
-                  />
+                  {/* 4. Category selection */}
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
+                      Categoria
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:border-purple-500 outline-none text-xs cursor-pointer"
+                    >
+                      {categories.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* 5. Retail price */}
-                <div className="space-y-1.5">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1">
-                    <DollarSign className="w-3 h-3 text-emerald-400" /> Preço de Venda (R$)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={salePrice}
-                    onChange={(e) => setSalePrice(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 4. Cost price */}
+                  <div className="space-y-1.5">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1">
+                      <DollarSign className="w-3 h-3 text-purple-400" /> Preço de Custo (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={costPrice}
+                      onChange={(e) => setCostPrice(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono text-xs"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* 6. Stock initial */}
-                <div className="space-y-1.5">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                    Estoque Inicial
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    placeholder="0"
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono"
-                  />
+                  {/* 5. Retail price */}
+                  <div className="space-y-1.5">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] flex items-center gap-1">
+                      <DollarSign className="w-3 h-3 text-emerald-400" /> Preço de Venda (R$)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={salePrice}
+                      onChange={(e) => setSalePrice(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono text-xs"
+                    />
+                  </div>
                 </div>
 
-                {/* 7. Stock warning limit */}
-                <div className="space-y-1.5">
-                  <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] text-red-300">
-                    Estoque Mínimo Alerta
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    placeholder="5"
-                    value={minStock}
-                    onChange={(e) => setMinStock(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-805 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 6. Stock initial */}
+                  <div className="space-y-1.5">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
+                      Estoque Inicial
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      placeholder="0"
+                      value={stock}
+                      onChange={(e) => setStock(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono text-xs"
+                    />
+                  </div>
 
-              {/* Linked Partner */}
-              <div className="space-y-1.5">
-                <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px]">
-                  Parceiro Vinculado (Opcional)
-                </label>
-                <select
-                  value={partnerId}
-                  onChange={(e) => setPartnerId(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 focus:border-purple-500 outline-none text-xs"
-                >
-                  <option value="">Nenhum (Venda Própria / Imperial)</option>
-                  {partners.map(part => (
-                    <option key={part.id} value={part.id}>
-                      {part.name} (Comissão: {part.commissionPercent}%)
-                    </option>
-                  ))}
-                </select>
+                  {/* 7. Stock warning limit */}
+                  <div className="space-y-1.5">
+                    <label className="block text-zinc-400 font-semibold uppercase tracking-wide text-[10px] text-red-300">
+                      Estoque Mínimo Alerta
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      placeholder="5"
+                      value={minStock}
+                      onChange={(e) => setMinStock(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-805 rounded-lg text-zinc-100 focus:border-purple-500 outline-none font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Configuração de Parceria de Produto */}
+                <div className="p-4 bg-zinc-900/35 border border-zinc-805 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Parceria de Produto</h4>
+                      <p className="text-[10px] text-zinc-500">Comissionamento automático para este produto</p>
+                    </div>
+                    <select
+                      value={hasPartner ? "sim" : "nao"}
+                      onChange={(e) => {
+                        const yes = e.target.value === "sim";
+                        setHasPartner(yes);
+                        if (yes && !partnerId && partners.length > 0) {
+                          setPartnerId(partners[0].id);
+                        }
+                      }}
+                      className="px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-300 focus:border-purple-500 outline-none cursor-pointer"
+                    >
+                      <option value="nao">Não</option>
+                      <option value="sim">Sim</option>
+                    </select>
+                  </div>
+
+                  {hasPartner && (
+                    <div className="space-y-3 pt-3 border-t border-zinc-800/60 transition-all duration-200">
+                      {/* Parceiro */}
+                      <div className="space-y-1">
+                        <label className="block text-zinc-400 text-[10px] uppercase font-bold tracking-wider">Parceiro Vinculado</label>
+                        {partners.length > 0 ? (
+                          <select
+                            value={partnerId}
+                            onChange={(e) => setPartnerId(e.target.value)}
+                            className="w-full px-3 py-2 bg-zinc-955 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:border-purple-500 outline-none cursor-pointer"
+                          >
+                            <option value="">Selecione o parceiro...</option>
+                            {partners.map(part => (
+                              <option key={part.id} value={part.id}>{part.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <p className="text-[10px] text-amber-500 leading-normal">⚠️ Nenhum parceiro cadastrado no sistema. Cadastre-os na aba parceiros antes de gerenciar parcerias.</p>
+                        )}
+                      </div>
+
+                      {/* Tipo de Parceria */}
+                      <div className="space-y-1">
+                        <label className="block text-zinc-400 text-[10px] uppercase font-bold tracking-wider">Tipo de Parceria</label>
+                        <select
+                          value={partnerType}
+                          onChange={(e) => {
+                            const val = e.target.value as any;
+                            setPartnerType(val);
+                            // Default value parameters for smoothness
+                            if (val === 'fixo') setPartnerValue('10');
+                            else if (val === 'venda') setPartnerValue('20');
+                            else if (val === 'lucro') setPartnerValue('50');
+                            else if (val === 'consignado') setPartnerValue('15');
+                          }}
+                          className="w-full px-3 py-2 bg-zinc-955 border border-zinc-805 rounded-lg text-xs text-zinc-200 focus:border-purple-500 outline-none cursor-pointer"
+                        >
+                          <option value="lucro">Percentual do lucro (% do Lucro)</option>
+                          <option value="venda">Percentual da venda (% da Venda)</option>
+                          <option value="fixo">Valor fixo por unidade (R$ Fixo)</option>
+                          <option value="consignado">Produto consignado (Loja recebe comissão fixa)</option>
+                        </select>
+                      </div>
+
+                      {/* Valor correspondente */}
+                      <div className="space-y-1">
+                        <label className="block text-zinc-400 text-[10px] uppercase font-bold tracking-wider">
+                          {partnerType === 'lucro' ? 'Percentual de Lucro para o Parceiro (%)' :
+                           partnerType === 'venda' ? 'Percentual do Preço de Venda (%)' :
+                           partnerType === 'fixo' ? 'Repasse Fixo ao Parceiro por Unidade (R$)' :
+                           'Comissão Fixa retida pela Loja por Unidade (R$)'}
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs font-mono font-medium text-zinc-500">
+                            {partnerType === 'lucro' || partnerType === 'venda' ? '%' : 'R$'}
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={partnerValue}
+                            onChange={(e) => setPartnerValue(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2 bg-zinc-955 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:border-purple-500 outline-none font-mono"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <p className="text-[9px] text-zinc-550 bg-zinc-950/20 p-2 rounded border border-zinc-900/60 leading-normal mt-1 text-justify">
+                          {partnerType === 'lucro' && '💡 O parceiro recebe uma porcentagem sobre o lucro de cada unidade vendida (Preço de Venda - Custo).'}
+                          {partnerType === 'venda' && '💡 O parceiro recebe uma comissão direta sobre o preço bruto de cada unidade vendida.'}
+                          {partnerType === 'fixo' && '💡 O parceiro recebe uma quantia estipulada em dinheiro para cada unidade vendida.'}
+                          {partnerType === 'consignado' && '💡 O produto pertence ao parceiro. A loja ganha uma comissão fixa pela venda, e o resto da receita vai para o parceiro.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Botões do Modal */}
-              <div className="flex gap-3 pt-4 border-t border-zinc-800/80">
+              <div className="flex gap-3 pt-3 border-t border-zinc-800/85 shrink-0">
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="flex-1 py-3 border border-zinc-800 hover:bg-zinc-900 text-zinc-400 rounded-xl transition-all"
+                  className="flex-1 py-3 border border-zinc-800 hover:bg-zinc-900 text-zinc-400 rounded-xl transition-all cursor-pointer text-xs"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-purple-650 hover:bg-purple-600 text-white font-semibold rounded-xl transition-all shadow-md shadow-purple-900/20 border border-purple-500/10"
+                  className="flex-1 py-3 bg-purple-650 hover:bg-purple-600 text-white font-semibold rounded-xl transition-all shadow-md shadow-purple-900/20 border border-purple-500/10 cursor-pointer text-xs"
                 >
                   {editingId ? 'Salvar Alterações' : 'Cadastrar Ativo'}
                 </button>

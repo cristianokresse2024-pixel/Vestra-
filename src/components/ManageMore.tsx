@@ -575,9 +575,9 @@ export const ManageMore: React.FC = () => {
               <div className="space-y-4">
                 <div className="space-y-2 overflow-y-auto max-h-[250px] pr-1">
                   {partners.map(p => {
-                    const partnerSalesList = sales.filter(s => s.partnerId === p.id);
-                    const unpaidCommissions = partnerSalesList.filter(s => s.commissionPaid === false).reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
-                    const paidCommissions = partnerSalesList.filter(s => s.commissionPaid === true).reduce((sum, s) => sum + (s.commissionAmount || 0), 0);
+                    const partnerSalesList = sales.filter(s => s.items.some(item => item.partnerId === p.id));
+                    const unpaidCommissions = partnerSalesList.filter(s => s.commissionPaid === false).reduce((sum, s) => sum + s.items.filter(item => item.partnerId === p.id).reduce((sSum, item) => sSum + (item.commissionAmount || 0), 0), 0);
+                    const paidCommissions = partnerSalesList.filter(s => s.commissionPaid === true).reduce((sum, s) => sum + s.items.filter(item => item.partnerId === p.id).reduce((sSum, item) => sSum + (item.commissionAmount || 0), 0), 0);
                     return (
                       <div key={p.id} className="p-3 bg-zinc-900/40 border border-zinc-805 rounded-xl flex items-center justify-between">
                         <div>
@@ -615,15 +615,19 @@ export const ManageMore: React.FC = () => {
                     <p className="text-[11px] text-zinc-500 font-sans mt-0.5">Baixar e marcar os repasses de comissão selecionados como pagos</p>
                   </div>
 
-                  {sales.filter(s => s.partnerId && s.commissionPaid === false).length > 0 ? (
+                  {sales.filter(s => s.commissionPaid === false && s.items.some(item => item.partnerId && item.commissionAmount && item.commissionAmount > 0)).length > 0 ? (
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {sales.filter(s => s.partnerId && s.commissionPaid === false).map(s => {
-                        const part = partners.find(pt => pt.id === s.partnerId);
+                      {sales.filter(s => s.commissionPaid === false && s.items.some(item => item.partnerId && item.commissionAmount && item.commissionAmount > 0)).map(s => {
+                        const partnerIdsInSale = Array.from(new Set(
+                          s.items.filter(item => item.partnerId && item.commissionAmount && item.commissionAmount > 0).map(item => item.partnerId)
+                        ));
+                        const partnerNames = partnerIdsInSale.map(pId => partners.find(pt => pt.id === pId)?.name || 'Parceiro').join(', ');
+                        const totalCommissionInSale = s.items.filter(item => item.partnerId && item.commissionAmount && item.commissionAmount > 0).reduce((acc, item) => acc + (item.commissionAmount || 0), 0);
                         return (
                           <div key={s.id} className="p-3 bg-zinc-950 border border-zinc-900 rounded-xl flex items-center justify-between">
                             <div>
                               <p className="text-xs text-zinc-200 font-sans">
-                                Parceiro: <span className="font-semibold text-purple-400">{part?.name || 'Não cadastrado'}</span>
+                                Parceiro(s): <span className="font-semibold text-purple-400">{partnerNames || 'Não cadastrado'}</span>
                               </p>
                               <p className="text-[10px] text-zinc-500 mt-1">
                                 Venda #{s.id.slice(0, 8)} • Total: {formatBRL(s.total)}
@@ -631,7 +635,7 @@ export const ManageMore: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-2.5">
                               <span className="text-xs font-mono font-bold text-amber-500">
-                                 + {formatBRL(s.commissionAmount || 0)}
+                                 + {formatBRL(totalCommissionInSale)}
                               </span>
                               <button
                                 onClick={() => toggleCommissionPayment(s.id)}

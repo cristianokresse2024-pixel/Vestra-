@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useReino } from '../store';
 import { Product, SaleItem } from '../types';
 import { 
@@ -30,6 +30,42 @@ export const SalesPOS: React.FC = () => {
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [showScanner, setShowScanner] = useState(false);
 
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Initial focus
+    if (barcodeInputRef.current) {
+      barcodeInputRef.current.focus();
+    }
+
+    // Global barcode listener
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Avoid hijacking keystrokes when the user is explicitly writing inside an editable field other than barcode scanner input itself
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
+        // If it's already a text input, proceed normally and do not hijack
+        if (activeEl !== barcodeInputRef.current) {
+          return;
+        }
+      }
+
+      // Ignore modifiers (Ctrl, Cmd, Alt)
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // When starting to type alphanumeric characters, ensure barcode field receives and preserves focus
+      if (barcodeInputRef.current && e.key && e.key.length === 1 && /[a-zA-Z0-9\-]/.test(e.key)) {
+        if (document.activeElement !== barcodeInputRef.current) {
+          barcodeInputRef.current.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
+
   // Active searched products
   const filteredProducts = searchQuery ? products.filter(p => 
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -58,6 +94,32 @@ export const SalesPOS: React.FC = () => {
     }
   };
 
+  // Core Product Partnership Commission Calculator based on custom configuration
+  const calculateItemCommission = (prod: Product, quantity: number) => {
+    if (!prod.hasPartner || !prod.partnerId) return undefined;
+    const type = prod.partnerType || 'venda';
+    const val = prod.partnerValue || 0;
+    
+    switch (type) {
+      case 'lucro': {
+        const unitProfit = Math.max(0, prod.salePrice - prod.costPrice);
+        return (unitProfit * (val / 100)) * quantity;
+      }
+      case 'venda': {
+        return (prod.salePrice * (val / 100)) * quantity;
+      }
+      case 'fixo': {
+        return val * quantity;
+      }
+      case 'consignado': {
+        const partnerPayoutPerUnit = Math.max(0, prod.salePrice - val);
+        return partnerPayoutPerUnit * quantity;
+      }
+      default:
+        return undefined;
+    }
+  };
+
   // 2. Add product to basket helper
   const addProductToCart = (prod: Product) => {
     if (prod.stock <= 0) {
@@ -78,21 +140,13 @@ export const SalesPOS: React.FC = () => {
         return prev.map(item => {
           if (item.productId === prod.id) {
             const newQty = item.quantity + 1;
-            // recalculate commission
-            const partner = partners.find(p => p.id === prod.partnerId);
-            const commissionAmount = partner 
-                ? (item.salePrice * newQty * partner.commissionPercent) / 100 
-                : undefined;
-                
+            const commissionAmount = calculateItemCommission(prod, newQty);
             return { ...item, quantity: newQty, commissionAmount };
           }
           return item;
         });
       } else {
-        const partner = partners.find(p => p.id === prod.partnerId);
-        const commissionAmount = partner 
-            ? (prod.salePrice * 1 * partner.commissionPercent) / 100 
-            : undefined;
+        const commissionAmount = calculateItemCommission(prod, 1);
 
         return [...prev, {
           productId: prod.id,
@@ -100,7 +154,7 @@ export const SalesPOS: React.FC = () => {
           quantity: 1,
           costPrice: prod.costPrice,
           salePrice: prod.salePrice,
-          partnerId: prod.partnerId,
+          partnerId: prod.hasPartner && prod.partnerId ? prod.partnerId : undefined,
           commissionAmount
         }];
       }
@@ -114,8 +168,7 @@ export const SalesPOS: React.FC = () => {
       setCart(prev => prev.map(i => {
         if (i.productId === item.productId) {
           const newQty = i.quantity + 1;
-          const partner = partners.find(p => p.id === i.partnerId);
-          const commissionAmount = partner ? (i.salePrice * newQty * partner.commissionPercent) / 100 : undefined;
+          const commissionAmount = calculateItemCommission(prod, newQty);
           return { ...i, quantity: newQty, commissionAmount };
         }
         return i;
@@ -127,12 +180,12 @@ export const SalesPOS: React.FC = () => {
   };
 
   const handleDecreaseQty = (itemId: string) => {
+    const prod = products.find(p => p.id === itemId);
     setCart(prev => prev.map(item => {
       if (item.productId === itemId) {
         const nextQty = item.quantity - 1;
         if (nextQty > 0) {
-           const partner = partners.find(p => p.id === item.partnerId);
-           const commissionAmount = partner ? (item.salePrice * nextQty * partner.commissionPercent) / 100 : undefined;
+           const commissionAmount = prod ? calculateItemCommission(prod, nextQty) : undefined;
            return { ...item, quantity: nextQty, commissionAmount };
         }
         return null; // Will trigger filter later
@@ -196,6 +249,7 @@ export const SalesPOS: React.FC = () => {
           <form onSubmit={handleBarcodeScan} className="flex gap-2">
             <div className="relative flex-1">
               <input
+                ref={barcodeInputRef}
                 type="text"
                 placeholder="Insira ou simule escaneamento de código de barras"
                 value={scannedCode}
@@ -338,8 +392,10 @@ export const SalesPOS: React.FC = () => {
                     <p className="text-[10px] text-zinc-400 font-mono">
                       {item.salePrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} un.
                     </p>
-                    {item.partnerId && (
-                      <span className="text-[9px] bg-purple-900/30 text-purple-300 px-1 rounded-sm border border-purple-500/20">Consignado</span>
+                    {item.partnerId && item.commissionAmount !== undefined && item.commissionAmount > 0 && (
+                      <span className="text-[9px] bg-purple-950/45 text-purple-300 px-1.5 py-0.5 rounded-md border border-purple-500/20 font-sans">
+                        Parceria: {item.commissionAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </span>
                     )}
                   </div>
                 </div>
