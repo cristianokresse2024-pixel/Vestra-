@@ -39,6 +39,12 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
+    // --- Public Metadata rules ---
+    match /metadata/{docId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
     // --- Stores rules ---
     match /stores/{storeId} {
       allow read: if isSignedIn();

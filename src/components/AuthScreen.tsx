@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+/// <reference types="vite/client" />
+import React, { useState, useEffect } from 'react';
 import { useAuth, UserRole } from '../auth';
 import { useReino } from '../store';
 import { 
@@ -13,9 +14,15 @@ import {
   ArrowLeft, 
   RefreshCw,
   Percent,
-  Check
+  Check,
+  Activity,
+  ShieldAlert,
+  Server
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { DiagnosticPanel } from './DiagnosticPanel';
 
 export const AuthScreen: React.FC = () => {
   const { login, registerUser, recoverPassword, loginWithGoogle, error, setError } = useAuth();
@@ -32,6 +39,31 @@ export const AuthScreen: React.FC = () => {
   const [role, setRole] = useState<UserRole>('Administrador');
   const [linkedPartnerId, setLinkedPartnerId] = useState('');
   const [newPartnerCommission, setNewPartnerCommission] = useState('10'); // Default 10% commission
+
+  // Admin lock states for first-admin and subsequent validation checks
+  const [adminExists, setAdminExists] = useState<boolean | null>(null);
+  const [adminAuthCode, setAdminAuthCode] = useState('');
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  useEffect(() => {
+    const checkAdminLock = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'metadata', 'admin_lock'));
+        if (docSnap.exists() && docSnap.data().admin_created) {
+          setAdminExists(true);
+        } else {
+          setAdminExists(false);
+        }
+      } catch (err) {
+        console.warn("Could not retrieve admin_lock metadata document:", err);
+        // Fallback: assume false to let empty or errors recover gracefully
+        setAdminExists(false);
+      }
+    };
+    if (mode === 'register') {
+      checkAdminLock();
+    }
+  }, [mode]);
 
   const handleToggleMode = (newMode: 'login' | 'register' | 'recover') => {
     setError(null);
@@ -75,6 +107,16 @@ export const AuthScreen: React.FC = () => {
           return;
         }
 
+        // Validate admin code if Admin role is chosen and an admin already exists in metadata
+        if (role === 'Administrador' && adminExists === true) {
+          const expectedCode = import.meta.env.VITE_ADMIN_AUTH_CODE || "ReinoAdmin2026!";
+          if (adminAuthCode.trim() !== expectedCode) {
+            setError("Chave de autorização de Administrador incorreta. Por favor, solicite a chave ao administrador principal.");
+            setLoading(false);
+            return;
+          }
+        }
+
         let partnerIdToLink = linkedPartnerId;
 
         // If the role is Partner (Parceiro) and "new" is selected or no partner exists
@@ -91,6 +133,17 @@ export const AuthScreen: React.FC = () => {
         }
 
         await registerUser(name, email, password, role, partnerIdToLink);
+
+        // If newly registered user is successfully created as first Admin, set the system lock
+        if (role === 'Administrador') {
+          try {
+            await setDoc(doc(db, 'metadata', 'admin_lock'), { admin_created: true });
+            setAdminExists(true);
+          } catch (lockErr) {
+            console.warn("Failed to write metadata admin_lock document:", lockErr);
+          }
+        }
+
         setSuccessMsg("Sua conta foi criada e ativada com sucesso!");
       }
     } catch (err: any) {
@@ -101,7 +154,7 @@ export const AuthScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#07070a] text-zinc-50 flex items-center justify-center p-4 relative overflow-hidden font-sans selection:bg-purple-600 selection:text-white">
+    <div className="min-h-screen bg-[#07070a] text-zinc-50 flex flex-col items-center justify-center p-4 md:p-6 lg:p-8 relative overflow-y-auto font-sans selection:bg-purple-600 selection:text-white">
       {/* Premium ambient backdrop light effects */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-purple-900/15 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-indigo-900/10 rounded-full blur-[120px] pointer-events-none" />
@@ -340,15 +393,51 @@ export const AuthScreen: React.FC = () => {
                 )}
 
                 {role === 'Administrador' && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="p-3.5 bg-indigo-950/20 border border-indigo-500/10 rounded-xl text-[11px] text-indigo-300 leading-relaxed overflow-hidden"
-                  >
-                    <span className="font-semibold block mb-0.5">👑 Realeza Plena:</span>
-                    Contas do tipo Administrador herdam privilégios e permissões totais para regular todas as lojas, despesas, objetivos financeiros, lucros e estoque unificado.
-                  </motion.div>
+                  <div className="space-y-3">
+                    {adminExists === true ? (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="p-3.5 bg-zinc-950/80 border border-purple-500/15 rounded-xl space-y-2 overflow-hidden"
+                      >
+                        <label className="block text-[9px] font-semibold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-purple-400" />
+                          Chave de Autorização Admin (Obrigatório)
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="Segredo para novos administradores"
+                          value={adminAuthCode}
+                          onChange={(e) => setAdminAuthCode(e.target.value)}
+                          className="w-full bg-zinc-950 border border-purple-500/10 focus:border-purple-500/40 rounded-lg text-xs p-2 text-zinc-200 outline-none"
+                        />
+                        <span className="text-[9px] text-zinc-550 leading-normal block">
+                          Já existe uma conta administrativa principal registrada. Insira o código mestre para autorizar novas contas do tipo Administrador.
+                        </span>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="p-3.5 bg-emerald-950/20 border border-emerald-500/15 rounded-xl text-[11px] text-emerald-300 leading-relaxed overflow-hidden"
+                      >
+                        <span className="font-semibold block mb-0.5">👑 Primeiro Administrador (Auto-autorizado):</span>
+                        Como não há nenhum Administrador em nossos metadados, você poderá criar a conta raiz de forma direta e sem chave de segurança secundária!
+                      </motion.div>
+                    )}
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-3.5 bg-indigo-950/20 border border-indigo-500/10 rounded-xl text-[11px] text-indigo-300 leading-relaxed overflow-hidden"
+                    >
+                      <span className="font-semibold block mb-0.5">👑 Realeza Plena:</span>
+                      Contas do tipo Administrador herdam privilégios e permissões totais para regular todas as lojas, despesas, objetivos financeiros, lucros e estoque unificado.
+                    </motion.div>
+                  </div>
                 )}
               </AnimatePresence>
             </div>
@@ -427,7 +516,39 @@ export const AuthScreen: React.FC = () => {
         <p className="text-center text-[10px] text-zinc-650 mt-6 font-mono uppercase tracking-wider">
           🔒 Conexão segura • reino gestão v2.0
         </p>
+
+        <div className="flex flex-col items-center gap-2 mt-4">
+          <button
+            type="button"
+            onClick={() => setShowDiagnostics(true)}
+            className="text-[10px] text-zinc-500 hover:text-purple-400 font-mono uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5 bg-zinc-950/40 hover:bg-zinc-900/60 py-1.5 px-3 rounded-full border border-zinc-900/40 outline-none"
+          >
+            <Activity className="w-3 h-3 text-purple-500 animate-pulse" />
+            Diagnóstico de Conexão
+          </button>
+        </div>
       </motion.div>
+
+      {/* Connection Diagnostic Panel Overlay */}
+      <AnimatePresence>
+        {showDiagnostics && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            >
+              <DiagnosticPanel onClose={() => setShowDiagnostics(false)} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

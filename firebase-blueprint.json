@@ -157,9 +157,22 @@
         "read": { "type": "boolean" }
       },
       "required": ["id", "storeId", "type", "title", "message", "date", "read"]
+    },
+    "SystemMetadata": {
+      "title": "SystemMetadata",
+      "description": "Lock document to track initialization status",
+      "type": "object",
+      "properties": {
+        "admin_created": { "type": "boolean" }
+      },
+      "required": ["admin_created"]
     }
   },
   "firestore": {
+    "/metadata/{docId}": {
+      "schema": "SystemMetadata",
+      "description": "System state tracking parameters"
+    },
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profiles and credentials mappings"

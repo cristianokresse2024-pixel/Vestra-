@@ -47,10 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Hook into Firebase Auth state updates
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
       setError(null);
-      
       if (currentUser) {
+        setUser(currentUser);
         try {
           // Fetch additional profile data (e.g. roles & rules) from Firestore
           const userDocRef = doc(db, 'users', currentUser.uid);
@@ -58,37 +57,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (docSnap.exists()) {
             setProfile(docSnap.data() as UserProfile);
+            setLoading(false);
           } else {
             // Check if this is a brand new user that just signed up via registerUser.
-            // When registerUser is called, currentUser.metadata.creationTime == currentUser.metadata.lastSignInTime (roughly)
-            // But to avoid race condition where registerUser hasn't written the doc yet, we wait a bit or let registerUser handle it.
-            // Actually, we can just let registerUser do it. The onAuthStateChanged should only create a fallback if the user is logging in (e.g. from a previous session) and *still* has no doc.
-            // Let's delay the fallback creation check.
+            // If they registered, registerUser will write the profile. But we wait just in case.
             setTimeout(async () => {
-              const retrySnap = await getDoc(userDocRef);
-              if (!retrySnap.exists()) {
-                const defaultProfile: UserProfile = {
-                  id: currentUser.uid,
-                  name: currentUser.displayName || 'Usuário',
-                  email: currentUser.email || '',
-                  role: 'Administrador', // First fallback
-                  createdAt: new Date().toISOString()
-                };
-                await setDoc(userDocRef, defaultProfile);
-                setProfile(defaultProfile);
-              } else {
-                setProfile(retrySnap.data() as UserProfile);
+              try {
+                const retrySnap = await getDoc(userDocRef);
+                if (!retrySnap.exists()) {
+                  const defaultProfile: UserProfile = {
+                    id: currentUser.uid,
+                    name: currentUser.displayName || 'Usuário',
+                    email: currentUser.email || '',
+                    role: 'Administrador', // First fallback
+                    createdAt: new Date().toISOString()
+                  };
+                  await setDoc(userDocRef, defaultProfile);
+                  setProfile(defaultProfile);
+                } else {
+                  setProfile(retrySnap.data() as UserProfile);
+                }
+              } catch (retryErr) {
+                console.error("Retry fetching profile failed:", retryErr);
+              } finally {
+                setLoading(false);
               }
-            }, 3000);
+            }, 1000); // 1s timeout fallback
           }
         } catch (err: any) {
           console.error("Error fetching user profile:", err);
           setError("Erro ao obter perfil de acesso. Verifique sua conexão.");
+          setLoading(false);
         }
       } else {
+        setUser(null);
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
