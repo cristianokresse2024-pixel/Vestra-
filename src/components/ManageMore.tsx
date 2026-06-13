@@ -28,11 +28,14 @@ import {
   Percent,
   TrendingUp,
   PiggyBank,
-  Award
+  Award,
+  Database,
+  Download,
+  Upload
 } from 'lucide-react';
 import { requestFCMToken, playNotificationSound } from '../services/fcm';
 
-type AdminModule = 'menu' | 'parceiros' | 'metas' | 'despesas' | 'caixa' | 'relatorios' | 'lojas' | 'notificacoes';
+type AdminModule = 'menu' | 'parceiros' | 'metas' | 'despesas' | 'caixa' | 'relatorios' | 'lojas' | 'notificacoes' | 'backup';
 
 export const ManageMore: React.FC = () => {
   const [activeModule, setActiveModule] = useState<AdminModule>('menu');
@@ -83,6 +86,105 @@ export const ManageMore: React.FC = () => {
     setTimeout(() => {
       setCopiedToken(false);
     }, 2000);
+  };
+
+  // Backup & Restauração Logic
+  const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  const handleExportBackup = () => {
+    try {
+      setBackupSuccess(null);
+      setBackupError(null);
+
+      const backupKeys = [
+        'reino_stores',
+        'reino_active_store_id',
+        'reino_products',
+        'reino_sales',
+        'reino_partners',
+        'reino_expenses',
+        'reino_cash_entries',
+        'reino_goals',
+        'reino_desired_salaries',
+        'reino_notifications',
+        'reino_users',
+        'reino_admin_lock'
+      ];
+
+      const backupData: Record<string, string | null> = {};
+      backupKeys.forEach(key => {
+        backupData[key] = localStorage.getItem(key);
+      });
+
+      const fullPayload = {
+        app: 'reino-gestao',
+        version: '2.0',
+        exportedAt: new Date().toISOString(),
+        payload: backupData
+      };
+
+      const blob = new Blob([JSON.stringify(fullPayload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `reino-gestao-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupSuccess('Sua cópia de segurança foi gerada e baixada com sucesso! Guarde este arquivo com carinho.');
+    } catch (err: any) {
+      console.error(err);
+      setBackupError('Falha ao gerar o arquivo de backup: ' + err.message);
+    }
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setBackupSuccess(null);
+    setBackupError(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        if (parsed.app !== 'reino-gestao') {
+          throw new Error('Arquivo de cópia de segurança inválido. Verifique se escolheu o arquivo correto gerado pelo Reino Gestão.');
+        }
+
+        const payload = parsed.payload;
+        if (!payload || typeof payload !== 'object') {
+          throw new Error('O arquivo de backup não possui dados válidos.');
+        }
+
+        // Apply backup values to localStorage safely
+        Object.entries(payload).forEach(([key, val]) => {
+          if (val === null) {
+            localStorage.removeItem(key);
+          } else {
+            localStorage.setItem(key, val as string);
+          }
+        });
+
+        setBackupSuccess('Cópia de segurança importada e restaurada com sucesso! Atualizando o sistema em segundos...');
+        
+        // Reload page to fully refresh React states safely after a brief delay
+        setTimeout(() => {
+          window.location.reload();
+        }, 2200);
+
+      } catch (err: any) {
+        console.error(err);
+        setBackupError('Falha ao importar o arquivo: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleSimulateSaleNotification = () => {
@@ -275,6 +377,7 @@ export const ManageMore: React.FC = () => {
             {activeModule === 'relatorios' && "Relatórios Consolidados de Desempenho"}
             {activeModule === 'lojas' && "Escalabilidade de Lojas Unificadas"}
             {activeModule === 'notificacoes' && "Notificações do Sistema em Tempo Real"}
+            {activeModule === 'backup' && "Cópia de Segurança & Restauração (Backup)"}
           </h2>
           <p className="text-xs text-zinc-500 font-sans">
             {activeModule === 'menu' && "Gerencie a infraestrutura administrativa, metas e finanças da loja"}
@@ -285,6 +388,7 @@ export const ManageMore: React.FC = () => {
             {activeModule === 'relatorios' && "Auditoria de lucros de custos mercantis, margens e custos consolidados"}
             {activeModule === 'lojas' && "Múltiplas lojas atuando de forma isolada na mesma conta de comerciante"}
             {activeModule === 'notificacoes' && "Alertas gerados automaticamente em processos de vendas e quebras de estoque"}
+            {activeModule === 'backup' && "Exporte ou importe as planilhas, produtos, vendas de forma offline e segura"}
           </p>
         </div>
       </div>
@@ -395,6 +499,20 @@ export const ManageMore: React.FC = () => {
             {notifications.filter(n => !n.read).length > 0 && (
               <span className="absolute top-6 right-6 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
             )}
+          </button>
+
+          {/* Option: Backup */}
+          <button
+            onClick={() => setActiveModule('backup')}
+            className="glow-zinc-card p-6 rounded-2xl text-left cursor-pointer transition-all hover:border-purple-500/40 group relative"
+          >
+            <div className="w-10 h-10 rounded-xl bg-purple-900/15 flex items-center justify-center mb-4 text-purple-400 group-hover:scale-110 transition-transform">
+              <Database className="w-5 h-5" />
+            </div>
+            <h4 className="font-semibold text-zinc-200 text-sm font-sans">Backup & Restauração</h4>
+            <p className="text-xs text-zinc-500 mt-2 font-sans leading-normal">
+              Salve todas as suas tabelas em arquivo ou carregue seu backup em outro celular ou computador.
+            </p>
           </button>
         </div>
       )}
@@ -2223,6 +2341,140 @@ export const ManageMore: React.FC = () => {
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* SUBMODULE: BACKUP & RESTORE */}
+      {activeModule === 'backup' && (
+        <div className="space-y-6 max-w-4xl mx-auto font-sans text-xs animate-fadeIn animate-duration-300">
+          <div className="glow-zinc-card p-6 rounded-2xl border border-purple-500/10 space-y-6">
+            
+            {/* Explanatory introduction */}
+            <div className="space-y-2">
+              <span className="px-2.5 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[9px] uppercase font-mono tracking-wider font-bold rounded-md inline-block">
+                Cópia de Segurança Offline
+              </span>
+              <h3 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-1.5 focus:outline-none">
+                <Database className="w-5 h-5 text-purple-400" /> Exportação e Migração de Dados
+              </h3>
+              <p className="text-zinc-400 text-xs leading-relaxed">
+                Como os seus dados são guardados de forma altamente privada e segura apenas no seu próprio navegador, se você trocar de aparelho celular, usar outro computador ou quiser uma cópia de segurança preventiva, poderá realizar o download completo das tabelas abaixo e importá-las de volta a qualquer instante.
+              </p>
+            </div>
+
+            {/* Current local database snapshot metrics */}
+            <div className="bg-zinc-950/80 p-5 border border-zinc-900 rounded-xl space-y-4">
+              <h4 className="text-[10px] font-mono uppercase tracking-widest font-bold text-zinc-500">
+                Inventário do Universo Atual (Local)
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-zinc-900/40 p-3.5 border border-zinc-850 rounded-xl">
+                  <span className="text-zinc-500 text-[10px] block">Lojas Registradas</span>
+                  <span className="text-lg font-bold text-zinc-100 mt-1 block font-mono">
+                    {stores.length}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/40 p-3.5 border border-zinc-850 rounded-xl">
+                  <span className="text-zinc-500 text-[10px] block">Produtos no Catálogo</span>
+                  <span className="text-lg font-bold text-zinc-100 mt-1 block font-mono">
+                    {products.length}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/40 p-3.5 border border-zinc-850 rounded-xl">
+                  <span className="text-zinc-500 text-[10px] block">Vendas Efetuadas</span>
+                  <span className="text-lg font-bold text-zinc-100 mt-1 block font-mono">
+                    {sales.length}
+                  </span>
+                </div>
+                <div className="bg-zinc-900/40 p-3.5 border border-zinc-850 rounded-xl">
+                  <span className="text-zinc-500 text-[10px] block font-sans">Parceiros Vendedores</span>
+                  <span className="text-lg font-bold text-zinc-100 mt-1 block font-mono">
+                    {partners.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notification messages */}
+            {backupSuccess && (
+              <div className="p-4 bg-emerald-950/10 border border-emerald-500/20 rounded-2xl text-emerald-400 flex gap-2.5 items-start text-xs animate-fadeIn">
+                <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <h5 className="font-bold">Sucesso!</h5>
+                  <p className="mt-0.5 text-zinc-350">{backupSuccess}</p>
+                </div>
+              </div>
+            )}
+
+            {backupError && (
+              <div className="p-4 bg-red-950/15 border border-red-500/20 rounded-2xl text-red-400 flex gap-2.5 items-start text-xs animate-fadeIn">
+                <X className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <h5 className="font-bold">Aviso / Erro</h5>
+                  <p className="mt-0.5 text-zinc-350">{backupError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Twin action panels: Export and Import */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              
+              {/* Action 1: Export Card */}
+              <div className="bg-zinc-950/50 p-5 border border-zinc-900 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="text-xs font-bold text-zinc-200 uppercase flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-purple-400" /> 1. Exportar Backup
+                  </h4>
+                  <p className="text-zinc-500 text-[11px] leading-relaxed">
+                    Baixa um único arquivo contendo todas as filiais, produtos, clientes, metas, transações, parceiros cadastrados e credenciais de login para o seu aparelho atual.
+                  </p>
+                </div>
+                <button
+                  onClick={handleExportBackup}
+                  className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <Download className="w-4 h-4" />
+                  Gerar e Baixar Backup (.json)
+                </button>
+              </div>
+
+              {/* Action 2: Import Card */}
+              <div className="bg-zinc-950/50 p-5 border border-zinc-900 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="space-y-1.5 flex-1">
+                  <h4 className="text-xs font-bold text-zinc-200 uppercase flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-purple-400" /> 2. Restaurar Backup
+                  </h4>
+                  <p className="text-zinc-500 text-[11px] leading-relaxed">
+                    Escolha um arquivo de backup baixado anteriormente para carregar de volta no novo celular ou computador. <strong className="text-red-400 font-semibold">Os dados atuais desta máquina serão substituídos.</strong>
+                  </p>
+                </div>
+                
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    id="backup-file-input"
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="backup-file-input"
+                    className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-850 hover:text-white text-zinc-300 font-bold rounded-xl border border-zinc-800 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm text-center"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Selecionar Arquivo de Backup
+                  </label>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Safety tips footer note */}
+            <div className="p-4 bg-amber-950/5 border border-amber-900/15 rounded-xl text-zinc-500 text-[10px] leading-relaxed">
+              💡 <strong>Dica de Segurança:</strong> Não altere o conteúdo do arquivo JSON manualmente para evitar corrompimento de informações estruturadas. Para maior proteção de suas senhas administrativas, faça backups regulares após períodos de alto faturamento ou balanço de estoque físico.
+            </div>
+
           </div>
         </div>
       )}
