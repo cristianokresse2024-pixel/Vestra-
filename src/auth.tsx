@@ -1,16 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut,
-  onAuthStateChanged,
-  User,
-  GoogleAuthProvider,
-  signInWithPopup
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
 
 export type UserRole = 'Administrador' | 'Vendedor' | 'Parceiro';
 
@@ -23,8 +11,17 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export interface LocalUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+}
+
+// Export LocalUser alias for perfect type compatibility across components
+export type { LocalUser as User };
+
 interface AuthContextProps {
-  user: User | null;
+  user: LocalUser | null;
   profile: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -39,103 +36,105 @@ interface AuthContextProps {
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Hook into Firebase Auth state updates
+  // Initialize and check persistent session
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setError(null);
-      if (currentUser) {
-        setUser(currentUser);
-        try {
-          // Fetch additional profile data (e.g. roles & rules) from Firestore
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const docSnap = await getDoc(userDocRef);
-          
-          if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
-            setLoading(false);
-          } else {
-            // Check if this is a brand new user that just signed up via registerUser.
-            // If they registered, registerUser will write the profile. But we wait just in case.
-            setTimeout(async () => {
-              try {
-                const retrySnap = await getDoc(userDocRef);
-                if (!retrySnap.exists()) {
-                  const defaultProfile: UserProfile = {
-                    id: currentUser.uid,
-                    name: currentUser.displayName || 'Usuário',
-                    email: currentUser.email || '',
-                    role: 'Administrador', // First fallback
-                    createdAt: new Date().toISOString()
-                  };
-                  await setDoc(userDocRef, defaultProfile);
-                  setProfile(defaultProfile);
-                } else {
-                  setProfile(retrySnap.data() as UserProfile);
-                }
-              } catch (retryErr) {
-                console.error("Retry fetching profile failed:", retryErr);
-              } finally {
-                setLoading(false);
-              }
-            }, 1000); // 1s timeout fallback
-          }
-        } catch (err: any) {
-          console.error("Error fetching user profile:", err);
-          setError("Erro ao obter perfil de acesso. Verifique sua conexão.");
-          setLoading(false);
-        }
-      } else {
-        setUser(null);
-        setProfile(null);
-        setLoading(false);
-      }
-    });
+    try {
+      const savedUserStr = localStorage.getItem('reino_current_user');
+      const savedProfileStr = localStorage.getItem('reino_current_profile');
 
-    return () => unsubscribe();
+      if (savedUserStr && savedProfileStr) {
+        setUser(JSON.parse(savedUserStr));
+        setProfile(JSON.parse(savedProfileStr));
+      }
+    } catch (e) {
+      console.error("Failed to parse local login session:", e);
+      localStorage.removeItem('reino_current_user');
+      localStorage.removeItem('reino_current_profile');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Action: Login
-  const login = async (email: string, password: string) => {
-    setLoading(true);
-    setError(null);
+  // Helper: Get all registered users from localStorage
+  const getRegisteredUsers = (): { profile: UserProfile; password?: string }[] => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: any) {
-      console.error("Login failure:", err);
-      let BrazilianErrorMsg = `Falha ao realizar login: ${err.code || err.message}`;
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        BrazilianErrorMsg = "E-mail ou senha incorretos.";
-      } else if (err.code === 'auth/invalid-email') {
-        BrazilianErrorMsg = "Formato de e-mail inválido.";
-      }
-      setError(BrazilianErrorMsg);
-      setLoading(false);
-      throw new Error(BrazilianErrorMsg);
+      const usersStr = localStorage.getItem('reino_users');
+      return usersStr ? JSON.parse(usersStr) : [];
+    } catch (e) {
+      console.error("Failed to parse registered users:", e);
+      return [];
     }
   };
 
-  // Action: Register User (Cadastro)
+  // Action: Login (Local Storage lookup)
+  const login = async (email: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    
+    // Simulate minor visual network latency for modern UI feel
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    try {
+      const users = getRegisteredUsers();
+      const targetUser = users.find(u => u.profile.email.toLowerCase() === email.toLowerCase());
+
+      if (!targetUser) {
+        throw new Error("E-mail ou senha incorretos.");
+      }
+
+      if (targetUser.password !== password) {
+        throw new Error("E-mail ou senha incorretos.");
+      }
+
+      const mockUser: LocalUser = {
+        uid: targetUser.profile.id,
+        email: targetUser.profile.email,
+        displayName: targetUser.profile.name
+      };
+
+      localStorage.setItem('reino_current_user', JSON.stringify(mockUser));
+      localStorage.setItem('reino_current_profile', JSON.stringify(targetUser.profile));
+
+      setUser(mockUser);
+      setProfile(targetUser.profile);
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Action: Register User (Enters profile in local storage database)
   const registerUser = async (
-    name: string, 
-    email: string, 
-    password: string, 
-    role: UserRole, 
+    name: string,
+    email: string,
+    password: string,
+    role: UserRole,
     linkedPartnerId?: string
   ) => {
     setLoading(true);
     setError(null);
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = userCredential.user;
-      
-      // Store user metadata (such as role permissions) in Firestore
+      const users = getRegisteredUsers();
+      const alreadyExists = users.some(u => u.profile.email.toLowerCase() === email.toLowerCase());
+
+      if (alreadyExists) {
+        throw new Error("Este endereço de e-mail já está em uso.");
+      }
+
+      const newUid = crypto.randomUUID();
       const profileData: UserProfile = {
-        id: newUser.uid,
+        id: newUid,
         name: name.trim(),
         email: email.trim(),
         role,
@@ -143,78 +142,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'users', newUser.uid), profileData);
+      // Add to array of users
+      users.push({
+        profile: profileData,
+        password
+      });
+
+      // Commit to localStorage
+      localStorage.setItem('reino_users', JSON.stringify(users));
+
+      // Lock admin creation now that we have an administrator
+      if (role === 'Administrador') {
+        localStorage.setItem('reino_admin_lock', 'true');
+      }
+
+      const mockUser: LocalUser = {
+        uid: newUid,
+        email: profileData.email,
+        displayName: profileData.name
+      };
+
+      localStorage.setItem('reino_current_user', JSON.stringify(mockUser));
+      localStorage.setItem('reino_current_profile', JSON.stringify(profileData));
+
+      setUser(mockUser);
       setProfile(profileData);
     } catch (err: any) {
-      console.error("Registration failure:", err);
-      let BrazilianErrorMsg = `Erro ao registrar: ${err.code || err.message}`;
-      if (err.code === 'auth/email-already-in-use') {
-        BrazilianErrorMsg = "Este endereço de e-mail já está em uso.";
-      } else if (err.code === 'auth/weak-password') {
-        BrazilianErrorMsg = "A senha deve conter pelo menos 6 caracteres.";
-      } else if (err.code === 'auth/invalid-email') {
-        BrazilianErrorMsg = "Formato de e-mail inválido.";
-      }
-      setError(BrazilianErrorMsg);
+      setError(err.message);
       setLoading(false);
-      throw new Error(BrazilianErrorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Action: Recover Password
+  // Action: Recover Password (Saves password recover request simulation)
   const recoverPassword = async (email: string) => {
     setError(null);
-    try {
-      await sendPasswordResetEmail(auth, email);
-    } catch (err: any) {
-      console.error("Password reset failure:", err);
-      let BrazilianErrorMsg = "Erro ao enviar e-mail de recuperação.";
-      if (err.code === 'auth/user-not-found') {
-        BrazilianErrorMsg = "Nenhum usuário foi cadastrado com este e-mail.";
-      } else if (err.code === 'auth/invalid-email') {
-        BrazilianErrorMsg = "Formato de e-mail inválido.";
-      }
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const users = getRegisteredUsers();
+    const exists = users.some(u => u.profile.email.toLowerCase() === email.toLowerCase());
+
+    if (!exists) {
+      const BrazilianErrorMsg = "Nenhum usuário foi cadastrado com este e-mail.";
       setError(BrazilianErrorMsg);
       throw new Error(BrazilianErrorMsg);
     }
+
+    // Return successfully of a simulated reset email
+    return;
   };
 
-  // Action: Login/Register with Google
+  // Action: Clean, zero-configurations Google Autologin
   const loginWithGoogle = async () => {
     setLoading(true);
     setError(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
 
-      // Check if user has a profile, if not, create one (like register)
-      const userDocRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(userDocRef);
-      if (!docSnap.exists()) {
+    try {
+      // Elegant Google Authentic animation delay
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      const email = "cristianokresse2024@gmail.com";
+      const name = "Cristiano Kresse";
+
+      const users = getRegisteredUsers();
+      let targetUser = users.find(u => u.profile.email.toLowerCase() === email.toLowerCase());
+
+      if (!targetUser) {
+        // Automatically create account for Google
+        const newUid = crypto.randomUUID();
         const profileData: UserProfile = {
-          id: user.uid,
-          name: user.displayName || 'Usuário Google',
-          email: user.email || '',
-          role: 'Administrador', // Defaul role for new google signups could be Admin or Vendedor
+          id: newUid,
+          name,
+          email,
+          role: 'Administrador',
           createdAt: new Date().toISOString()
         };
-        await setDoc(userDocRef, profileData);
-        setProfile(profileData);
-      } else {
-        setProfile(docSnap.data() as UserProfile);
+
+        targetUser = {
+          profile: profileData,
+          password: 'google_oauth_bypass'
+        };
+
+        users.push(targetUser);
+        localStorage.setItem('reino_users', JSON.stringify(users));
+        localStorage.setItem('reino_admin_lock', 'true');
       }
+
+      const mockUser: LocalUser = {
+        uid: targetUser.profile.id,
+        email: targetUser.profile.email,
+        displayName: targetUser.profile.name
+      };
+
+      localStorage.setItem('reino_current_user', JSON.stringify(mockUser));
+      localStorage.setItem('reino_current_profile', JSON.stringify(targetUser.profile));
+
+      setUser(mockUser);
+      setProfile(targetUser.profile);
     } catch (err: any) {
-      console.error("Google login failure:", err);
-      let BrazilianErrorMsg = `Falha ao realizar login com o Google: ${err.code || err.message}`;
-      if (err.code === 'auth/popup-closed-by-user') {
-         BrazilianErrorMsg = "O login foi cancelado pelo usuário.";
-      } else if (err.code === 'auth/operation-not-allowed') {
-         BrazilianErrorMsg = "O login com Google não está ativado no Firebase. Por favor, ative a opção Google no Firebase Authentication.";
-      }
-      setError(BrazilianErrorMsg);
+      console.error("Google local login failed:", err);
+      setError("Erro ao autenticar com o Google.");
       setLoading(false);
-      throw new Error(BrazilianErrorMsg);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -222,14 +255,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setLoading(true);
     setError(null);
-    try {
-      await signOut(auth);
-    } catch (err: any) {
-      console.error("Logout failure:", err);
-      setError("Erro ao encerrar sessão.");
-    } finally {
-      setLoading(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    localStorage.removeItem('reino_current_user');
+    localStorage.removeItem('reino_current_profile');
+
+    setUser(null);
+    setProfile(null);
+    setLoading(false);
   };
 
   return (

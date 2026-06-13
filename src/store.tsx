@@ -10,16 +10,6 @@ import {
   MonthlyDesiredSalary,
   Notification
 } from './types';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  where, 
-  doc, 
-  setDoc, 
-  deleteDoc 
-} from 'firebase/firestore';
-import { db } from './firebase';
 import { playNotificationSound } from './services/fcm';
 
 interface ReinoContextProps {
@@ -120,55 +110,9 @@ export const ReinoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Track Firestore real-time notifications synchronization
+  // Notifications real-time local side effects are managed through localStorage and local state updates.
   useEffect(() => {
-    if (!activeStoreId) return;
-
-    const q = query(
-      collection(db, 'notifications'),
-      where('storeId', '==', activeStoreId)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const dbNotifs: Notification[] = [];
-      let shouldPlaySound = false;
-
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        dbNotifs.push({
-          id: docSnap.id,
-          storeId: data.storeId,
-          type: data.type as 'info' | 'warning' | 'success',
-          title: data.title,
-          message: data.message,
-          date: data.date,
-          read: data.read ?? false,
-          soldProduct: data.soldProduct,
-          quantity: data.quantity,
-          partnerProfit: data.partnerProfit,
-          accumulatedBalance: data.accumulatedBalance,
-          partnerId: data.partnerId
-        });
-
-        // Play chime audio specifically for new success/sale trigger signals (less than 8 seconds old)
-        if (data.type === 'success' && data.soldProduct && (Date.now() - new Date(data.date).getTime() < 8000)) {
-          shouldPlaySound = true;
-        }
-      });
-
-      // Maintain latest on top
-      dbNotifs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      setNotifications(dbNotifs);
-
-      if (shouldPlaySound) {
-        playNotificationSound();
-      }
-    }, (error) => {
-      console.error("Firestore Notification Listener error:", error);
-    });
-
-    return () => unsubscribe();
+    // Initial notifications loaded on change or boot
   }, [activeStoreId]);
 
   // Sync state to LocalStorage
@@ -267,7 +211,7 @@ export const ReinoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Helper notification adder
-  const addNotificationForStore = async (
+  const addNotificationForStore = (
     storeId: string, 
     title: string, 
     message: string, 
@@ -289,11 +233,9 @@ export const ReinoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Immediate reactive local state set
     setNotifications(prev => [newNotif, ...prev]);
 
-    // Save in Firestore for active live sync across multi-devices!
-    try {
-      await setDoc(doc(db, 'notifications', docId), newNotif);
-    } catch (err) {
-      console.error("Error writing notification to Firestore:", err);
+    // Play pleasant chime audio for new success/sale trigger signals
+    if (type === 'success') {
+      playNotificationSound();
     }
   };
 
@@ -302,22 +244,12 @@ export const ReinoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotificationForStore(activeStoreId, title, message, type);
   };
 
-  const markNotificationAsRead = async (id: string) => {
+  const markNotificationAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    try {
-      await setDoc(doc(db, 'notifications', id), { read: true }, { merge: true });
-    } catch (err) {
-      console.error("Error setting notification read state:", err);
-    }
   };
 
-  const clearNotification = async (id: string) => {
+  const clearNotification = (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
-    try {
-      await deleteDoc(doc(db, 'notifications', id));
-    } catch (err) {
-      console.error("Error deleting notification:", err);
-    }
   };
 
   // Product CRUD

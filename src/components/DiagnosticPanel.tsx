@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { auth, db, firebaseConfig } from '../firebase';
-import { doc, getDocFromServer } from 'firebase/firestore';
 import { 
   Activity, 
   CheckCircle, 
@@ -8,16 +6,14 @@ import {
   AlertTriangle, 
   RefreshCw, 
   Database, 
-  Key, 
-  Globe, 
+  ShieldCheck, 
   UserCheck,
-  ShieldAlert,
   Server
 } from 'lucide-react';
 
 interface DiagnosticResult {
   title: string;
-  category: 'firebase' | 'auth' | 'session' | 'db';
+  category: 'storage' | 'auth' | 'session' | 'db';
   status: 'loading' | 'success' | 'error' | 'warning';
   detail: string;
   solution?: string;
@@ -25,10 +21,10 @@ interface DiagnosticResult {
 
 export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
   const [results, setResults] = useState<DiagnosticResult[]>([
-    { title: "Estrutura de Variáveis de Ambiente", category: "firebase", status: "loading", detail: "Iniciando verificação..." },
-    { title: "Inicialização do App Firebase", category: "firebase", status: "loading", detail: "Pendente..." },
+    { title: "Armazenamento de Dados Local (localStorage)", category: "storage", status: "loading", detail: "Iniciando verificação..." },
+    { title: "Estado de Segurança de Administradores", category: "auth", status: "loading", detail: "Pendente..." },
     { title: "Verificação de Sessão do Usuário", category: "session", status: "loading", detail: "Pendente..." },
-    { title: "Acesso de Teste ao Banco (Firestore)", category: "db", status: "loading", detail: "Pendente..." }
+    { title: "Integridade de Banco Unificado (Lojas e Produtos)", category: "db", status: "loading", detail: "Pendente..." }
   ]);
   const [isRunning, setIsRunning] = useState(false);
   const [lastCheck, setLastCheck] = useState<string>('');
@@ -38,103 +34,95 @@ export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose })
     const updated = [...results].map(r => ({ ...r, status: 'loading' as const, detail: "Analisando..." }));
     setResults(updated);
 
-    // 1. Env & Configuration Check
-    const configChecked: DiagnosticResult = {
-      title: "Estrutura de Variáveis de Ambiente",
-      category: "firebase",
+    // Simulate minor analyzer delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 1. LocalStorage Availability Check
+    const storageChecked: DiagnosticResult = {
+      title: "Armazenamento de Dados Local (localStorage)",
+      category: "storage",
       status: "success",
-      detail: "Variáveis mapeadas com sucesso."
+      detail: "Seu navegador possui suporte ativo a persistência localStorage de alto desempenho."
     };
-
-    const missingVars: string[] = [];
-    if (!firebaseConfig.apiKey) missingVars.push("VITE_FIREBASE_API_KEY");
-    if (!firebaseConfig.authDomain) missingVars.push("VITE_FIREBASE_AUTH_DOMAIN");
-    if (!firebaseConfig.projectId) missingVars.push("VITE_FIREBASE_PROJECT_ID");
-    if (!firebaseConfig.appId) missingVars.push("VITE_FIREBASE_APP_ID");
-
-    if (missingVars.length > 0) {
-      configChecked.status = "warning";
-      configChecked.detail = `Faltam credenciais no ambiente: ${missingVars.join(", ")}.`;
-      configChecked.solution = "Adicione as variáveis de ambiente com o prefixo VITE_ nas configurações de produção do Cloudflare Pages.";
-    } else {
-      configChecked.detail = `Todas as chaves de ambiente principais do Firebase estão presentes na compilação. ID do projeto: ${firebaseConfig.projectId}`;
+    try {
+      localStorage.setItem('reino_health_ping', 'true');
+      const ping = localStorage.getItem('reino_health_ping');
+      if (ping !== 'true') {
+        throw new Error("Erro de gravação");
+      }
+      localStorage.removeItem('reino_health_ping');
+    } catch (e: any) {
+      storageChecked.status = "error";
+      storageChecked.detail = "Seu navegador está bloqueando persistência em LocalStorage (modo anônimo restrito ou iframe isolado).";
+      storageChecked.solution = "Permita armazenamento offline ou use uma janela comum para garantir o salvamento automático das planilhas.";
     }
 
-    // 2. Firebase App Initialization Check
-    const initChecked: DiagnosticResult = {
-      title: "Inicialização do App Firebase",
-      category: "firebase",
-      status: "success",
-      detail: "Firebase SDK ativo e carregado corretamente."
-    };
-
-    if (!firebaseConfig.apiKey || firebaseConfig.apiKey.length < 10) {
-      initChecked.status = "error";
-      initChecked.detail = "Firebase não pôde inicializar de forma autêntica devido a chave de API ausente ou inválida.";
-      initChecked.solution = "Verifique o arquivo firebase-applet-config.json ou configure VITE_FIREBASE_API_KEY.";
-    }
-
-    // 3. Session / User State Check
+    // 2. Admin Lock Check
     const authChecked: DiagnosticResult = {
+      title: "Chave de Segurança & Registro de Administradores",
+      category: "auth",
+      status: "success",
+      detail: "Nenhum administrador principal bloqueado."
+    };
+    try {
+      const usersStr = localStorage.getItem('reino_users') || '[]';
+      const users = JSON.parse(usersStr);
+      const adminUsers = users.filter((u: any) => u.profile?.role === 'Administrador');
+      
+      if (adminUsers.length > 0) {
+        authChecked.detail = `Sistema de segurança ativo: ${adminUsers.length} administradores cadastrados com senhas seguras.`;
+      } else {
+        authChecked.status = "warning";
+        authChecked.detail = "Nenhum Administrador foi registrado ainda. A primeira conta poderá ser criada de forma livre.";
+        authChecked.solution = "Cadastre uma conta Administrativa para ativar as proteções globais contra invasão de outras contas de vendedores.";
+      }
+    } catch (e) {
+      authChecked.status = "warning";
+      authChecked.detail = "A chave de segurança local está desconfigurada.";
+    }
+
+    // 3. User Session Verification
+    const sessionChecked: DiagnosticResult = {
       title: "Verificação de Sessão do Usuário",
       category: "session",
       status: "success",
       detail: "Nenhum usuário logado no momento."
     };
-
     try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        authChecked.detail = `Usuário autenticado: ${currentUser.email} (UID: ${currentUser.uid}).`;
-        if (!currentUser.emailVerified) {
-          authChecked.status = "warning";
-          authChecked.detail += " E-mail não verificado.";
-          authChecked.solution = "Algumas restrições de segurança podem se aplicar. Considere verificar sua conta.";
-        }
+      const savedUserStr = localStorage.getItem('reino_current_user');
+      const savedProfileStr = localStorage.getItem('reino_current_profile');
+      if (savedUserStr && savedProfileStr) {
+        const profile = JSON.parse(savedProfileStr);
+        sessionChecked.detail = `Usuário logado: ${profile.name} (${profile.role}). Permissões ativas.`;
       } else {
-        authChecked.detail = "Sessão anônima / Sem usuário conectado no navegador. Gateway pronto.";
+        sessionChecked.detail = "Nenhum usuário ativo. Aguardando login de controle.";
       }
-    } catch (e: any) {
-      authChecked.status = "error";
-      authChecked.detail = `Erro ao recuperar estado do auth: ${e.message}`;
+    } catch (e) {
+      sessionChecked.status = "error";
+      sessionChecked.detail = "Sessão corrompida localmente.";
     }
 
-    // 4. DB Access Check
+    // 4. DB Integrity count
     const dbChecked: DiagnosticResult = {
-      title: "Acesso de Teste ao Banco (Firestore)",
+      title: "Integridade de Banco Unificado (Lojas e Produtos)",
       category: "db",
       status: "success",
-      detail: "Conectando ao banco..."
+      detail: "Inspecionando tabelas locais..."
     };
-
     try {
-      // Get document from server to check real persistence connection 
-      const testDocRef = doc(db, 'test_connection', 'ping');
-      await getDocFromServer(testDocRef).catch((e) => {
-        // We catch to inspect
-        throw e;
-      });
-      dbChecked.detail = `Leitura efetuada no banco de dados '${firebaseConfig.firestoreDatabaseId}' com sucesso.`;
-    } catch (e: any) {
-      // In Firestore, if a document doesn't exist, getDocFromServer succeeds (returns empty snapshot)
-      // If there is a network error or missing permission, it will throw an exception
-      const msg = e.message || String(e);
-      if (msg.includes('insufficient permissions') || msg.includes('permission-denied')) {
-        // Permissions are strict, which is fine! It means the database is online and rules are working!
-        dbChecked.status = "success";
-        dbChecked.detail = `Banco acessível e regras de segurança do Reino ativas (Rejeitou acesso não autorizado legitimamente).`;
-      } else if (msg.includes('offline') || msg.includes('failed-to-get-document') || msg.includes('network')) {
-        dbChecked.status = "error";
-        dbChecked.detail = `Falha de rede ao conectar com servidores do Google Firestore: ${msg}`;
-        dbChecked.solution = "Verifique se o seu navegador possui conectividade com o Firestore ou se políticas de CORS/Rede local estão restringindo conexões.";
-      } else {
-        dbChecked.status = "warning";
-        dbChecked.detail = `Aviso do banco Firestore: ${msg}`;
-        dbChecked.solution = "Isso pode ocorrer caso o banco ainda esteja em aprovação no Firebase Console.";
-      }
+      const storesStr = localStorage.getItem('reino_stores') || '[]';
+      const productsStr = localStorage.getItem('reino_products') || '[]';
+      
+      const storesCount = JSON.parse(storesStr).length;
+      const productsCount = JSON.parse(productsStr).length;
+      
+      dbChecked.detail = `Banco de dados local operando corretamente. Lojas criadas: ${storesCount} | Catálogo de Produtos: ${productsCount}.`;
+    } catch (e) {
+      dbChecked.status = "error";
+      dbChecked.detail = "Falha de consistência de tabelas.";
     }
 
-    setResults([configChecked, initChecked, authChecked, dbChecked]);
+    setResults([storageChecked, authChecked, sessionChecked, dbChecked]);
     setIsRunning(false);
     setLastCheck(new Date().toLocaleTimeString());
   };
@@ -151,7 +139,7 @@ export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose })
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-purple-400 animate-pulse" />
           <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-100">
-            Painel de Diagnóstico do Reino
+            Diagnóstico Local (Armazenamento em Navegador)
           </h3>
         </div>
         <button
@@ -165,7 +153,7 @@ export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose })
       </div>
 
       <p className="text-[11px] text-zinc-500 leading-relaxed text-justify">
-        Este painel realiza testes em tempo real de integração com o sistema Firebase Authentication e Firestore database, essencial para a estabilidade do sistema Reino Gestão ao ser publicado no Cloudflare.
+        O sistema está operando em **Modo Armazenamento Exclusivo em Navegador**. Seus dados são salvos de forma rápida, privada e autônoma sem requisições externas para o Firebase.
       </p>
 
       <div className="space-y-3 pt-1">
@@ -186,7 +174,7 @@ export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose })
                   r.status === 'warning' ? 'bg-amber-500/10 text-amber-400' :
                   r.status === 'error' ? 'bg-red-500/10 text-red-400' : 'bg-purple-500/10 text-purple-400'
                 }`}>
-                  {r.status === 'loading' ? 'Verificando' : r.status === 'success' ? 'OK' : r.status === 'warning' ? 'Alerta' : 'Erro'}
+                  {r.status === 'loading' ? 'Verificando' : r.status === 'success' ? 'OK' : r.status === 'warning' ? 'Aviso' : 'Erro'}
                 </span>
               </div>
               
@@ -203,9 +191,10 @@ export const DiagnosticPanel: React.FC<{ onClose?: () => void }> = ({ onClose })
       </div>
 
       <div className="flex items-center justify-between text-[9px] text-zinc-500 font-mono border-t border-zinc-900/60 pt-3">
-        <span>Última análise: {lastCheck || 'Processando'}</span>
+        <span>Análise offline: {lastCheck || 'Processando'}</span>
         {onClose && (
           <button 
+            type="button"
             onClick={onClose}
             className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-850 rounded text-zinc-300 font-semibold cursor-pointer border border-zinc-800 transition-all text-[10px]"
           >

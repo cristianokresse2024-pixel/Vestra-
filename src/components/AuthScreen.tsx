@@ -20,8 +20,7 @@ import {
   Server
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+// Using full local storage strategy for auth and locks
 import { DiagnosticPanel } from './DiagnosticPanel';
 
 export const AuthScreen: React.FC = () => {
@@ -46,17 +45,15 @@ export const AuthScreen: React.FC = () => {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   useEffect(() => {
-    const checkAdminLock = async () => {
+    const checkAdminLock = () => {
       try {
-        const docSnap = await getDoc(doc(db, 'metadata', 'admin_lock'));
-        if (docSnap.exists() && docSnap.data().admin_created) {
-          setAdminExists(true);
-        } else {
-          setAdminExists(false);
-        }
+        const usersStr = localStorage.getItem('reino_users') || '[]';
+        const users = JSON.parse(usersStr);
+        const hasAdmin = users.some((u: any) => u.profile?.role === 'Administrador');
+        const lockMetadata = localStorage.getItem('reino_admin_lock') === 'true';
+        setAdminExists(hasAdmin || lockMetadata);
       } catch (err) {
-        console.warn("Could not retrieve admin_lock metadata document:", err);
-        // Fallback: assume false to let empty or errors recover gracefully
+        console.warn("Could not retrieve admin_lock local state:", err);
         setAdminExists(false);
       }
     };
@@ -136,12 +133,8 @@ export const AuthScreen: React.FC = () => {
 
         // If newly registered user is successfully created as first Admin, set the system lock
         if (role === 'Administrador') {
-          try {
-            await setDoc(doc(db, 'metadata', 'admin_lock'), { admin_created: true });
-            setAdminExists(true);
-          } catch (lockErr) {
-            console.warn("Failed to write metadata admin_lock document:", lockErr);
-          }
+          localStorage.setItem('reino_admin_lock', 'true');
+          setAdminExists(true);
         }
 
         setSuccessMsg("Sua conta foi criada e ativada com sucesso!");
